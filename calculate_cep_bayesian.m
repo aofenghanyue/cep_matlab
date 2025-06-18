@@ -47,12 +47,12 @@ function results = calculate_cep_bayesian(x_test, z_test, x_supp, z_supp, confid
 
     parfor i = 1:M
         % a) 从逆伽玛后验分布中抽样方差
-        sigma2_x = 1 / gamrnd(alpha_post_x, 1/beta_post_x);
-        sigma2_z = 1 / gamrnd(alpha_post_z, 1/beta_post_z);
+        sigma2_x = invgamrnd(alpha_post_x, beta_post_x);
+        sigma2_z = invgamrnd(alpha_post_z, beta_post_z);
 
         % b) 根据抽样到的方差，从正态后验分布中抽样均值
-        mu_x = normrnd(a_post_x, sqrt(sigma2_x / n_post_x));
-        mu_z = normrnd(a_post_z, sqrt(sigma2_z / n_post_z));
+        mu_x = normrnd(a_post_x, sqrt(sigma2_x / (n_post_x+1)));
+        mu_z = normrnd(a_post_z, sqrt(sigma2_z / (n_post_z+1)));
         
         s1 = sqrt(sigma2_x);
         s2 = sqrt(sigma2_z);
@@ -91,30 +91,26 @@ function post_params = get_posterior_params(data_test, data_supp)
     % 采用与标准贝叶斯理论一致的定义，这比规范中的公式更清晰
     if n_supp > 1
         a_prior = mean(data_supp);
-        alpha_prior = (n_supp - 1) / 2;
-        beta_prior = 0.5 * sum((data_supp - a_prior).^2);
-        n_prior = n_supp;
+        alpha_prior = 1;
+        beta_prior = 0.5 / n_supp * sum((data_supp - a_prior).^2);
     else % 如果补充样本很少，使用弱信息先验
         a_prior = 0;
         alpha_prior = 0.001;
         beta_prior = 0.001;
-        n_prior = 0; % 几乎没有先验信息
     end
     
     % 2. 试验样本的统计量
     mean_test = mean(data_test);
     
     % 3. 后验参数 (标准更新公式)
-    n_post = n_prior + n_test;
-    alpha_post = alpha_prior + n_test / 2;
-    a_post = (n_prior * a_prior + n_test * mean_test) / n_post;
+    alpha_post = alpha_prior + (n_test + 1) / 2;
+    a_post = (a_prior + n_test * mean_test) / (n_test + 1);
     
-    sum_sq_err_test = sum((data_test - mean_test).^2);
+    sum_sq_err_test = sum((data_test - mean_test).^2) / n_test;
     
-    beta_post = beta_prior + 0.5 * sum_sq_err_test + ...
-                (n_prior * n_test / (2 * n_post)) * (mean_test - a_prior)^2;
+    beta_post = beta_prior + 0.5 * sum_sq_err_test * n_test;
 
-    post_params.n_post = n_post;
+    post_params.n_post = n_test;
     post_params.a_post = a_post;
     post_params.alpha_post = alpha_post;
     post_params.beta_post = beta_post;
